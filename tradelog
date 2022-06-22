@@ -1,0 +1,485 @@
+#!/bin/bash
+
+export POSIXLY_CORRECT=yes
+export LC_NUMERIC=en_US.UTF-8
+
+
+
+
+print_help()
+{
+    echo "Name: 
+      tradelog - analyzátor logů z obchodování na burze"
+    echo "---------------------------------------------------------------"
+    echo "Usage: 
+      tradelog [-h|--help] [FILTR] [PŘÍKAZ] [LOG [LOG2 [...]]"
+    echo "---------------------------------------------------------------"
+    echo "OPTION:
+      PŘÍKAZ může být jeden z:
+       • list-tick – výpis seznamu vyskytujících se burzovních symbolů, tzv. “tickerů”.
+       • profit – výpis celkového zisku z uzavřených pozic.
+       • pos – výpis hodnot aktuálně držených pozic seřazených sestupně dle hodnoty.
+       • last-price – výpis poslední známé ceny pro každý ticker.
+       • hist-ord – výpis histogramu počtu transakcí dle tickeru.
+       • graph-pos – výpis grafu hodnot držených pozic dle tickeru.
+
+      FILTR může být kombinace následujících: 
+       • -a DATETIME – after: jsou uvažovány pouze záznamy PO tomto datu (bez tohoto data). DATETIME je formátu YYYY-MM-DD HH:MM:SS.
+       • -b DATETIME – before: jsou uvažovány pouze záznamy PŘED tímto datem (bez tohoto data).
+       • -t TICKER – jsou uvažovány pouze záznamy odpovídající danému tickeru. Při více výskytech přepínače se bere množina všech uvedených tickerů.
+       • -w WIDTH – u výpisu grafů nastavuje jejich šířku, tedy délku nejdelšího řádku na WIDTH. Tedy, WIDTH musí být kladné celé číslo. Více výskytů přepínače je chybné spuštění.
+       • -h a --help vypíšou nápovědu s krátkým popisem každého příkazu a přepínače.  
+       "
+    
+}
+
+log_gz=""
+log=""
+TICKER=()
+LT=()
+dat=()
+
+
+while [ "$#" -gt 0 ]; do
+
+    case "$1" in
+-h|--help)
+    print_help
+    shift 
+    ;;
+-t)
+    TICKER+=($2)
+    
+    shift
+    shift   
+    ;;
+
+list-tick)
+    LT="$1"
+   
+    shift
+    ;;
+
+profit)
+    PRF="$1"
+    shift
+    ;;   
+
+pos)
+    POS="$1"
+    shift
+    ;; 
+last-price)
+    last="$1"
+    shift
+    ;;  
+-a) 
+  a="$1"  
+  date="$2"
+  shift
+  shift
+  ;;   
+-b)
+  b="$1"  
+  date2="$2"
+  shift
+  shift
+  ;;  
+hist-ord)
+    hs="$1"
+    shift
+    ;; 
+graph-pos)
+    gp="$1"
+    shift
+    ;; 
+-w)
+    w="$2"
+    shift
+    shift
+    ;;       
+*)
+    
+   if [[ $1 == *".gz"* ]]; then
+        log_gz="$1 $log_gz"
+        elif [[ $1 == *".log"* ]]; then
+        log="$1"
+        else
+        echo "Command not found "$1" "
+        exit
+        fi
+    shift
+    
+    #break
+    ;;
+    
+    esac
+    
+
+
+ done  
+
+
+
+
+rp(){
+if [[ -n $log_gz && -z $a && -z $b ]] 
+    then
+    gzip -d -c $log_gz
+elif [[ -n $log && -z $a && -z $b ]]
+    then
+    cat $log
+    
+
+elif [[ -n $log_gz && -n $a ]]
+then
+gzip -d -c $log_gz | awk  -v tp="$date" -F ';' '{if($1 > tp) {print}}'
+
+elif [[ -n $log && -n $a ]]
+then
+cat $log | awk  -v tp="$date" -F ';' '{if($1 > tp) {print}}'
+
+
+elif [[ -n $log_gz && -n $b ]]
+then
+gzip -d -c $log_gz | awk  -v tp="$date2" -F ';' '{if($1 != tp)  {print}; if($1 == tp) {exit}}'
+
+
+elif [[ -n $log && -n $b ]]
+then
+cat $log | awk  -v tp="$date2" -F ';' '{if($1 != tp){print}; if($1 == tp) {exit}}'
+
+
+fi
+}
+
+
+read_input=rp
+
+
+
+print_dat(){
+if [[ -n $a ]]
+then
+data
+elif [[ -n $b ]]
+then
+data2 
+fi
+}
+
+
+good="$(eval $read_input | awk  -F ';' '{print $2}' | sort | uniq)"
+vgood="$(eval echo $good | awk -F '\n' '{print $1}')"
+all="$vgood"
+
+
+
+
+fun_lt(){
+    if [[ -n $LT ]]
+    then
+    $read_input | awk  -F ';' '{print $2}' | sort | uniq 
+    fi
+}
+
+fun_tick(){
+
+    if [[ -n ${TICKER[@]} && -z $PRF && -z $POS && -z $last && -z $hs && -z $gp && -z $a && -z $b && -z $LT ]]
+    then
+    for var in ${TICKER[@]}
+    do
+    $read_input | awk -v tick="$var" -F ';' '{if(tick == $2) print}'
+    done
+
+    fi
+
+
+}
+tikk(){
+    if [[ -n $a && -z ${TICKER[@]} && -z $PRF && -z $POS && -z $last && -z $hs && -z $gp && -z $LT ]]
+    then
+    $read_input 
+    
+
+    elif [[ -n $b && -z ${TICKER[@]} && -z $PRF && -z $POS && -z $last && -z $hs && -z $gp && -z $LT ]]
+    then
+    $read_input 
+    
+
+    elif [[ -n $a && -n ${TICKER[@]} && -z $PRF && -z $POS && -z $last && -z $hs && -z $gp && -z $LT ]]
+    then
+    for var in ${TICKER[@]}
+    do
+    $read_input | awk -v tick="$var" -F ';' '{if(tick == $2) print}'
+    done
+
+    elif [[ -n $b && -n ${TICKER[@]} && -z $PRF && -z $POS && -z $last && -z $hs && -z $gp && -z $LT ]]
+    then
+    for var in ${TICKER[@]}
+    do
+    $read_input | awk -v tick="$var" -F ';' '{if(tick == $2) print}'
+    done
+    fi
+
+}
+tikk | awk '{print}' | sort
+fun_tick | awk '{print}' | sort
+
+
+tu(){
+    for var in $all
+    do
+    $read_input | awk -v tickk="$var"  -F ';' '{if($2 == tickk && $3 == "buy") {n+=$4*$6}; if($2 == tickk && $3 == "sell"){y+=$4*$6}} END {printf("%s %.2f\n",tickk,y-n)} '
+    done
+  }
+
+tu2(){
+    for vi in ${TICKER[@]}
+    do
+    tu | awk -v ti="$vi" '{if($1 == ti ) {print}}'
+    done
+}
+
+
+
+
+
+prf(){      
+    reserv=()   
+    if [[ -n $PRF && -n ${TICKER[@]} ]] 
+    then
+    
+    tu2 | awk '{n+=$2} END {printf("%.2f\n"),n}'
+
+
+     elif [[ -z ${TICKER[@]} && -n $PRF ]]
+    then
+    $read_input | awk -F ';'  '{if($3 == "buy") {n+=$4*$6};\
+    if($3 == "sell") {y+=$4*$6} }\
+    END {printf("%.2f\n"),y-n}'
+    fi
+    
+}
+
+
+
+mor(){
+for var in ${TICKER[@]}
+    do
+$read_input | awk -v tickk="$var"  -F ';' '{if($2 == tickk && $3 == "buy") n+=$6;\
+if($2 == tickk && $3 == "sell") y+=$6;\
+if($2 == tickk && $3 == "buy") z=$4;\
+if($2 == tickk && $3 == "sell") z=$4}\
+END {printf ("%-5s %5s %11.2f\n"),tickk,":",(n-y)*z}'
+
+done
+}
+
+mor2(){
+for var in $all
+    do
+$read_input | awk -v tickk="$var"  -F ';' '{if($2 == tickk && $3 == "buy") n+=$6;\
+if($2 == tickk && $3 == "sell") y+=$6;\
+if($2 == tickk && $3 == "buy") z=$4;\
+if($2 == tickk && $3 == "sell") z=$4}\
+END {printf ("%-5s %5s %11.2f\n"),tickk,":",(n-y)*z}'
+
+done
+}
+
+pos(){
+    if [[ -n $POS && -n ${TICKER[@]} ]]
+    then
+    mor | awk '{print}' | sort -nk3 -r
+    
+    elif [[ -n $POS && -z ${TICKER[@]} ]]
+    then
+    mor2 | awk '{print}' | sort -nk3 -r
+    
+    fi
+}
+
+pos2(){
+    if [[ -n $gp && -n ${TICKER[@]} ]]
+    then
+    mor | awk '{print}' | sort -nk3 -r
+    
+    elif [[ -n $gp && -z ${TICKER[@]} ]]
+    then
+    mor2 | awk '{print}' | sort -nk3 -r
+    
+    fi
+}
+
+graph_pos(){
+    if [[ -n $gp && -z ${TICKER[@]} && -z $w ]]
+    then
+
+    for var in $all
+    do
+    pos2 | awk -v tick="$var"  '{if($1 == tick) {z = $3 / 1000}} 
+    END { if(z > 0){printf("%-5s %6s"),tick,": "} {for(i=1;i<z;i++){printf("%s"),"#"}};\
+    if(z < 0){printf("%-5s %6s"),tick,": "} {for(i=-1;i>=z;i--){printf("%s"),"!"}{print""}} }'
+
+    done
+
+    elif [[ -n $gp && -n ${TICKER[@]} && -z $w ]]
+    then
+   
+    for var in ${TICKER[@]}
+    do
+    pos2 | awk -v tick="$var"  '{if($1 == tick) {z = $3 / 1000}} 
+    END { if(z > 0){printf("%-5s %5s"),tick,": "} {for(i=1;i<z;i++){printf("%s"),"#"}};\
+    if(z < 0){printf("%-5s %5s"),tick,": "} {for(i=-1;i>=z;i--){printf("%s"),"!"}{print""}} }'
+
+    done
+    fi
+
+}
+
+
+
+last(){
+    if [[ -n $last && -z ${TICKER[@]} ]]
+    then
+    for var in $all
+    do
+    $read_input | awk -v tick="$var" -F ';' '{if($2 == tick) {n=$4}} END {printf ("%-5s %5s %7.2f\n"),tick,":",n}'
+    done
+
+    elif [[ -n $last && -n ${TICKER[@]}  ]]
+    then
+    
+    for var in ${TICKER[@]}
+    do
+    $read_input | awk -v tick="$var" -F ';' '{if($2 == tick) {n=$4}} END {printf ("%-5s %s %7.2f\n"),tick,":",n}'
+    done
+
+    
+
+
+    elif [[ -n $last && -z ${TICKER[@]}  ]]
+    then
+    for var in $all
+    do
+    data | awk -v tick="$var" -F ';' '{if($2 == tick) {n=$4}} END {if(n != 0) {printf ("%-5s %5s %7.2f\n"),tick,":",n}}'
+    done
+
+    elif [[ -n $last && -n ${TICKER[@]}  ]]
+    then
+    for var in ${TICKER[@]}
+    do
+    data | awk -v tick="$var" -F ';' '{if($2 == tick) {n=$4}} END {if(n != 0) {printf ("%-5s %5s %7.2f\n"),tick,":",n}}'
+    done 
+
+
+fi
+}
+
+
+hs(){
+    if [[ -n $hs && -n ${TICKER[@]} && -z $w ]]
+    then
+
+    for var in ${TICKER[@]}
+    do
+    $read_input | awk -v tickk="$var" -F ';' '{if ($2 == tickk) n+=1} END {printf("%-6s %5s"),tickk,": "; for(i=0;i<n;i++){printf("%s"),"#"}{printf("\n")}}'
+    done
+
+    elif [[ -n $hs && -z ${TICKER[@]} && -z $w ]]
+    then
+    for var in $all
+    do
+    $read_input | awk -v tickk="$var" -F ';' '{if ($2 == tickk) n+=1} END {printf("%-6s %5s"),tickk,": "; for(i=0;i<n;i++){printf("%s"),"#"}{printf("\n")}}'
+    done
+    
+    fi
+
+}
+
+
+hss(){
+    for var in ${TICKER[@]}
+    do
+    $read_input | awk -v tickk="$var" -F ';' '{if ($2 == tickk) n+=1} END {printf("%-6s %5s %d"),tickk,": ",n;{printf("\n")}}'
+    done
+}
+
+hss2(){
+    for var in $all
+    do
+    $read_input | awk -v tickk="$var" -F ';' '{if ($2 == tickk) n+=1} END {printf("%-6s %5s %d"),tickk,": ",n;{printf("\n")}}'
+    done
+}
+
+
+
+
+
+
+
+hsw(){
+    if [[ -n $w && -n $hs && -z ${TICKER[@]} ]]
+    then
+    asd="$(eval hss2 | awk -v del="$w" '{if($3 > n) {n=$3}} END {{u = n / del}; {printf("%d\n",u)}}')" #10
+
+    
+    hss2 | awk -v dell="$asd" '{n = $3 / dell;{if(n>0){printf("%-6s %5s"),$1,": "}{for(i=1;i<=n;i++){printf("%s"),"#"}}}{print ""}}'
+
+    elif [[ -n $w && -n $hs && -n ${TICKER[@]} ]]
+    then
+    asd="$(eval hss | awk -v del="$w" '{if($3 > n) {n=$3}} END {{u = n / del}; {printf("%d\n",u)}}')" #10
+
+    
+    hss | awk -v dell="$asd" '{n = $3 / dell;{if(n>0){printf("%-6s %5s"),$1,": "}{for(i=1;i<=n;i++){printf("%s"),"#"}}}{print ""}}'
+    fi
+}
+
+
+
+hsw
+
+
+
+
+
+
+
+
+graph_posw(){
+if [[ -n $w && -n ${TICKER[@]} && -n $gp ]]
+then
+asd="$(eval mor | awk -v del="$w" '{if($3 > n) {n=$3}; if($3 < z){z=$3}}\
+END {z=z-z-z;\
+if(n>z){u= n / del};\
+if(z>n){u = z / del};\
+printf("%d\n",u)}')"
+
+mor | awk -v dell="$asd" '{n = $3 / dell;{if(n>0){printf("%-6s %5s"),$1,": "}{for(i=1;i<n;i++){printf("%s"),"#"}}}; {if(n<0){printf("%-6s %5s"),$1,": "}{for(i=-1;i>n;i--){printf("%s"),"!"}}{print ""}}              }'
+
+elif [[ -n $w && -z ${TICKER[@]} && -n $gp ]]
+then
+asd="$(eval mor2 | awk -v del="$w" '{if($3 > n) {n=$3}; if($3 < z){z=$3}}\
+END {z=z-z-z;\
+if(n>z){u= n / del};\
+if(z>n){u = z / del};\
+printf("%d\n",u)}')"
+
+mor2 | awk -v dell="$asd" '{n = $3 / dell;{if(n>0){printf("%-6s %5s"),$1,": "}{for(i=1;i<n;i++){printf("%s"),"#"}}}; {if(n<0){printf("%-6s %5s"),$1,": "}{for(i=-1;i>n;i--){printf("%s"),"!"}}{print ""}}}'
+
+fi
+}
+
+
+
+
+
+
+graph_posw
+pos 
+graph_pos
+last
+prf
+fun_lt
+hs
